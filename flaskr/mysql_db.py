@@ -93,7 +93,7 @@ def get_products_info_by_names( pool, names_list ):
 
 # res - [ {product_id:xxx, name:xxx, smallpicture:xxx, listpicture:xxx, sp_n:xx, sp_v:xx}, .... ]
 # sp_v 该规格的价格
-def get_category_goods( pool, category_id, limit=20 ):
+def get_category_goods( pool, category_id, limit=50 ):
 	res, pids_list = {}, []
 	conn = pool.get_conn()
 	cur = conn.cursor()
