@@ -1,0 +1,32 @@
+星选 app 接口
+
+# 首页图
+http://101.200.233.199:5001/api/main_page/block/<string:b_name>
+b_name = 'a'  'b'  'c' 'b1'  'b2'
+
+# banner
+http://101.200.233.199:5001/api/main_page/block/banner
+返回 - [{"product_id": 7065, "name": "\u9c9c\u6d3b\u6d77\u9c9c", 
+		"smallpicture": "http://www.guocool.com/guocool/upload/product/xingxuan/7002/7065/banner.jpg", "sp_n": "115g", "sp_v": 30.0},
+		{"product_id": 7068, "name": "\u9c9c\u6d3b\u6d77\u9c9c", 
+		"smallpicture": "http://www.guocool.com/guocool/upload/product/xingxuan/7002/7068/banner.jpg", "sp_n": "240g", "sp_v": 158.0}]
+
+
+# 基于类的列表
+http://101.200.233.199:5001/api/category_page/<string:category_id>
+category_id = 90 - 99
+
+
+
+
+# 充值
+http://192.168.67.128:5000/api/card/recharge/<string:user_id>/<string:card_id>
+返回值：{'res':'NO'/'OK', 'reason':'××××××' }
+
+# 注册/更改密码时发送验证短信
+http://192.168.67.128:5000/api/user/shortmessage/<string:phone>/<string:password>'
+返回值: {'res':'OK', 'reason':'验证短信已发送'} 或 {'res':'NO', 'reason':'xxxxxx'}
+
+# 注册/更改密码 进行短信验证
+http://192.168.67.128:5000/api/user/reg/<string:phone>/<string:code>
+返回值:	{ 'res':'OK', 'reason':'注册成功' } 或 { 'res':'NO', 'reason':'无效的手机号' }

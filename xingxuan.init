@@ -1,0 +1,9 @@
+[uwsgi]
+http = 0.0.0.0:5001
+plugins = python
+chdir = /usr/local/xingxuan_server
+wsgi-file = main.py
+callable = app
+processes = 4
+threads = 2
+master = true
