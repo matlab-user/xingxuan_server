@@ -196,7 +196,7 @@ def create_app( test_config=None ):
 		res = []
 		res = mysql_db.get_zones_info( app.config['mysql_pool'] )
 		for r in res:
-			r['icon'] = app.config['HTTP_ADDR'] + 'upload/product/xingxuan/zone/%s/banner.jpg' % r['name']
+			r['icon'] = app.config['HTTP_ADDR'] + 'upload/product/xingxuan/zone/%s/banner.jpg' % r['id']
 		return json.dumps( res )
 	
 
@@ -205,7 +205,7 @@ def create_app( test_config=None ):
 	def get_the_zone_goods( z_id ):
 		res = mysql_db.get_zone_goods( app.config['mysql_pool'], z_id )
 		if res!=[]:
-			gs_id = json.loads( res[0]['goods'] )
+			gs_id = res
 			res = mysql_db.get_products_info( app.config['mysql_pool'], gs_id )
 		return json.dumps( res )
 		
@@ -219,7 +219,7 @@ def create_app( test_config=None ):
 	
 	
 	# { z_id, card_id, g_sp_list:json-str, uid, addr, phone, consignee }
-	# g_sp_list - [ [产品id,产品规格,num], [产品id,产品规格,num]....], json-str
+	# g_sp_list - [ [产品id,产品规格名称,num], [产品id,产品规格名称,num]....], json-str
 	@app.route( '/api/pay_by_card/', methods = ['POST'] )
 	def pay_by_card():
 		g_sp_list = json.loads( request.form['g_sp_list'] )
@@ -326,6 +326,11 @@ def create_app( test_config=None ):
 		return  json.dumps( res )
 	
 	
+	@app.route( '/api/transfer/<string:uid>/<string:from_card_id>/<string:to_who>/<float:sum>', methods = ['POST', 'GET'] )
+	def transfer( uid, from_card_id, to_who, sum ):
+		pass
+	
+	
 	@app.route( '/api/user/shortmessage/<string:phone>/<string:password>', methods = ['POST', 'GET'] )
 	def user_shortmessage( phone, password ):
 		res = mysql_db.user_reg_shortmessage( app.config['mysql_pool'], phone, password )
@@ -388,6 +393,10 @@ def create_app( test_config=None ):
 	# z_id<0 表示不存在
 	@app.route( '/api/cart/inc/<string:uid>/<string:pid>/<string:product_price_id>/<string:z_id>', methods = ['GET'] )
 	def cart_inc( uid, pid, product_price_id, z_id ):
+		try:
+			z_id = int( z_id )
+		except:
+			z_id = -1
 		res = mysql_db.cart_add( app.config['mysql_pool'], uid, pid, product_price_id, z_id )
 		return json.dumps( res )
 	
@@ -395,20 +404,33 @@ def create_app( test_config=None ):
 	# /api/cart/minus/205/7298/7299/1
 	@app.route( '/api/cart/minus/<string:uid>/<string:pid>/<string:product_price_id>/<string:z_id>', methods = ['GET'] )	
 	def cart_minus( uid, pid, product_price_id, z_id ):
+		try:
+			z_id = int( z_id )
+		except:
+			z_id = -1	
 		res = mysql_db.cart_minus( app.config['mysql_pool'], uid, pid, product_price_id, z_id )
 		return json.dumps( res )
 	
-	
+	'''
 	# /api/cart/del/205/7298/7299/1
 	@app.route( '/api/cart/del/<string:uid>/<string:pid>/<string:product_price_id>/<string:z_id>', methods = ['GET'] )	
 	def cart_del( uid, pid, product_price_id, z_id ):
 		res = mysql_db.cart_del( app.config['mysql_pool'], uid, pid, product_price_id, z_id )
 		return json.dumps( res )
+	'''
 	
-	
+	# /api/cart/del/205
+	# post data: [ [pid,product_price_id,z_id], []... ] json-str
+	@app.route( '/api/cart/del/<string:uid>', methods = ['GET', 'POST'] )	
+	def cart_del( uid ):
+		g_info_list = json.loads( request.form['data'] )
+		res = mysql_db.cart_del( app.config['mysql_pool'], uid, g_info_list )
+		return json.dumps( res )
+		
+		
 	@app.route( '/api/cart/get/<string:uid>', methods = ['GET'] )	
 	def cart_get( uid ):
 		res = mysql_db.cart_get( app.config['mysql_pool'], uid )
 		return json.dumps( res )
-		
+	
 	return app
