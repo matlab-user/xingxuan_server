@@ -229,46 +229,56 @@ def create_app( test_config=None ):
 			goods_list.append( g[0] )
 			g_num_dict[ g[0] ] = g[2]
 			mid_g_sp_list.append( [g[0],g[1]] )
-
-		# 判断卡类型、专区和产品类型是否匹配
-		cds_info = mysql_db.get_my_cards( app.config['mysql_pool'], uid )
-		now, the_card = time.time(), None
-		for c in cds_info:
-			if c['card_id']==card_id and c['t1']<=now and c['t2']>=now and c['rest']>0:
-				the_card = c
-				break
-		del cds_info
-		if the_card is None:
-			res = { 'res':'NO', 'reason':'此卡号不存在或已经作废' }
-			return json.dumps( res )
 		
-		failed = []
-		goods_ids = mysql_db.get_zone_goods( app.config['mysql_pool'], z_id )
-		for g in goods_list:
-			if g not in goods_ids:
-				failed.append( g )
-				
-		if failed!=[]:
-			failed_goods = mysql_db.get_products_info( app.config['mysql_pool'], failed )
-			f_names = []
-			for f in failed_goods:
-				f_names.append( f['name'] )
-			failed = ','.join( f_names )
-			res = { 'res':'NO', 'reason':failed+' 不能使用该卡券进行购买' }
-			return json.dumps( res )
-		
-		# 判断金额是否足够
+		# 根据订单统计产品总金额; sum 为订单总金额
 		suc_goods = mysql_db.get_products_the_sp_info( app.config['mysql_pool'], mid_g_sp_list )
 		sum, sp_info_dict = 0, {}
 		for g in suc_goods:
 			sum += g['price'] * g_num_dict[ g['product_id'] ]
 			sp_info_dict[ g['product_id'] ] = [ g['price'], g['product_price_id'] ]
-		
+			
+		now, the_card = time.time(), None
 		order_info = dict( request.form )
 		order_info['amount'] = sum
-		if sum>the_card['rest']:
-			res = { 'res':'NO', 'reason':'金额不足' }
-			return json.dumps( res )
+			
+		if z_id!='-1':
+			# 判断卡类型、专区和产品类型是否匹配
+			cds_info = mysql_db.get_my_cards( app.config['mysql_pool'], uid )
+			for c in cds_info:
+				if c['card_id']==card_id and c['t1']<=now and c['t2']>=now and c['rest']>0:
+					the_card = c
+					break
+			del cds_info
+			if the_card is None:
+				res = { 'res':'NO', 'reason':'此卡号不存在或已经作废' }
+				return json.dumps( res )
+			
+			failed = []
+			goods_ids = mysql_db.get_zone_goods( app.config['mysql_pool'], z_id )
+			for g in goods_list:
+				if g not in goods_ids:
+					failed.append( g )
+					
+			if failed!=[]:
+				failed_goods = mysql_db.get_products_info( app.config['mysql_pool'], failed )
+				f_names = []
+				for f in failed_goods:
+					f_names.append( f['name'] )
+				failed = ','.join( f_names )
+				res = { 'res':'NO', 'reason':failed+' 不能使用该卡券进行购买' }
+				return json.dumps( res )
+			
+			# 判断金额是否足够
+			if sum>the_card['rest']:
+				res = { 'res':'NO', 'reason':'金额不足' }
+				return json.dumps( res )
+				
+		else:			# 使用通用卡余额支付
+			# 判断金额是否足够
+			money = mysql_db.get_user_money( app.config['mysql_pool'], uid )
+			if sum>money:
+				res = {'res':'NO', 'reason':'金额不足' }
+				return json.dumps( res )
 		
 		for g in g_sp_list:		
 			g.extend( sp_info_dict[ g[0] ] )
@@ -276,7 +286,7 @@ def create_app( test_config=None ):
 		
 		# 记录订单，修改金额，记录消费记录
 		mysql_db.gen_order( app.config['mysql_pool'], order_info )
-
+			
 		return json.dumps( {'res':'OK'} )
 		
 		
@@ -423,7 +433,10 @@ def create_app( test_config=None ):
 	# post data: [ [pid,product_price_id,z_id], []... ] json-str
 	@app.route( '/api/cart/del/<string:uid>', methods = ['GET', 'POST'] )	
 	def cart_del( uid ):
-		g_info_list = json.loads( request.form['data'] )
+		try:
+			g_info_list = json.loads( request.form['data'] )
+		except:
+			return json.dumps( {'res':'NO','reason':'invalid data'} )
 		res = mysql_db.cart_del( app.config['mysql_pool'], uid, g_info_list )
 		return json.dumps( res )
 		
@@ -432,5 +445,13 @@ def create_app( test_config=None ):
 	def cart_get( uid ):
 		res = mysql_db.cart_get( app.config['mysql_pool'], uid )
 		return json.dumps( res )
+	
+	
+	# status - 1:待付款，2:待发货，3:已发货，4:已完成，5:已取消
+	@app.route( '/api/orders/get/<string:offset>/<string:status>', methods = ['GET'] )
+	def get_order( offset, status ):
+		res = mysql_db.orders_get( app.config['mysql_pool'], offset, status )
+		return json.dumps( res )
+	
 	
 	return app

@@ -506,7 +506,8 @@ def gen_order( pool, o_info ):
 
 	lt = time.localtime( now )
 	tstr_sec = time.strftime( '%Y-%m-%d %H:%M:%S', lt )
-
+	uid, z_id = o_info['uid'], o_info['z_id']
+		
 	sql_str = 'SELECT product_id, store_id, name FROM gk_product WHERE '
 	g_ids, g_info_dict = [], {}
 	for g in o_info['g_sp_list']:
@@ -553,23 +554,32 @@ def gen_order( pool, o_info ):
 			data.append( mid )
 		cur.executemany( sql_str_2, data )
 		conn.commit()
-		
-	# 减去金额
-	sql_str = 'SELECT rest FROM wdh_cards WHERE card_id=%s'
-	cur.execute( sql_str, o_info['card_id'] )
-	rest = cur.fetchone()
-	rest = rest['rest']
+	
+	if z_id!='-1':
+		# 减去券金额
+		sql_str = 'SELECT rest FROM wdh_cards WHERE card_id=%s'
+		cur.execute( sql_str, o_info['card_id'] )
+		rest = cur.fetchone()
+		rest = rest['rest']
 
-	rest -= o_info['amount']
-	if rest>0:
-		sql_str = 'UPDATE wdh_cards SET rest=%s WHERE card_id=%s'
-		data = [ rest, o_info['card_id'] ]
-	else:	
-		sql_str = 'UPDATE wdh_cards SET rest=0, status=used WHERE card_id=%s'
-		data = o_info['card_id']
+		rest -= o_info['amount']
+		if rest>0:
+			sql_str = 'UPDATE wdh_cards SET rest=%s WHERE card_id=%s'
+			data = [ rest, o_info['card_id'] ]
+		else:	
+			sql_str = 'UPDATE wdh_cards SET rest=0, status=used WHERE card_id=%s'
+			data = o_info['card_id']
+	else:
+		# 减去通用卡金额
+		money = get_user_money( pool, uid )
+		money -= o_info['amount']
+		if money>0:
+			sql_str = 'UPDATE gk_client	SET money=%s WHERE id=%s'
+			data = ( money, uid )
+			
 	cur.execute( sql_str, data )
 	conn.commit()
-	
+		
 	# 记录消费记录
 	sql_str = 'INSERT INTO gk_order_log (order_state, order_flow_time, opration_desc, order_id) VALUES (3, %s,"订单已支付", %s)'
 	cur.execute( sql_str, (tstr_sec,the_id) )
@@ -577,7 +587,6 @@ def gen_order( pool, o_info ):
 	
 	# 清理购物车
 	# o_info - {z_id, card_id, g_sp_list:[[gid,sp,num,price,price_id]...], uid, addr, phone, amount, consignee }
-	uid, z_id = o_info['uid'], o_info['z_id']
 	for g in o_info['g_sp_list']:
 		pid, sp_id = g[0], str(g[-1])
 		res = cart_minus( pool, uid, pid, sp_id, z_id )
@@ -878,7 +887,40 @@ def transfer( pool, uid, from_card_id, to_who, sum ):
 	pool.release( conn )
 	return out_res
 
+
+def orders_get( pool, offset, status ):
+	out_res = []
+	conn = pool.get_conn()
+	cur = conn.cursor()
+				
+	sql_str = 'SELECT order_id, order_no, order_amount, fee, order_time, send_time, shipping_address, consignee, \
+				telephone, gk_store_info.store_name FROM gk_order LEFT JOIN gk_store_info ON gk_store_info.store_id=gk_order.store_id \
+				WHERE status=%s ORDER BY order_id DESC LIMIT %s, 50'
+	cur.execute( sql_str, (status, int(offset)) )
+	res = cur.fetchall()
+	out_res = res
 	
+	cur.close()
+	pool.release( conn )
+	return out_res
+
+
+def get_user_money( pool, user_id ):
+	conn = pool.get_conn()
+	cur = conn.cursor()
+	
+	sql_str = 'SELECT money FROM gk_client WHERE id=%s'
+	cur.execute( sql_str, (user_id,) )
+	res = cur.fetchone()
+	if res is None:
+		money = -1
+	else:
+		money = res['money']
+	cur.close()
+	pool.release( conn )
+	return money
+
+
 if __name__=='__main__':
 	'''
 	db_user = 'guocool'
