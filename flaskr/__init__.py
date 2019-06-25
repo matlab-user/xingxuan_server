@@ -203,7 +203,7 @@ def create_app( test_config=None ):
 	# [ {"product_id": xxx, "name": xxx, "smallpicture": xx, "sp_n": xx, "sp_v": xx}, {},.... ]
 	@app.route( '/api/zone_page/goods/<string:z_id>', methods = ['GET'] )
 	def get_the_zone_goods( z_id ):
-		res = mysql_db.get_zone_goods( app.config['mysql_pool'], z_id )
+		res, _ = mysql_db.get_zone_goods( app.config['mysql_pool'], z_id )
 		if res!=[]:
 			gs_id = res
 			res = mysql_db.get_products_info( app.config['mysql_pool'], gs_id )
@@ -252,13 +252,17 @@ def create_app( test_config=None ):
 			if the_card is None:
 				res = { 'res':'NO', 'reason':'此卡号不存在或已经作废' }
 				return json.dumps( res )
-			
+					
 			failed = []
-			goods_ids = mysql_db.get_zone_goods( app.config['mysql_pool'], z_id )
+			goods_ids, cards_type = mysql_db.get_zone_goods( app.config['mysql_pool'], z_id )
 			for g in goods_list:
 				if g not in goods_ids:
 					failed.append( g )
-					
+			
+			if the_card['type'] not in cards_type:
+				res = { 'res':'NO', 'reason':'此卡不适用于该专区' }
+				return json.dumps( res )
+						
 			if failed!=[]:
 				failed_goods = mysql_db.get_products_info( app.config['mysql_pool'], failed )
 				f_names = []
@@ -328,10 +332,13 @@ def create_app( test_config=None ):
 			else:
 				# 更改卡状态
 				mysql_db.set_card_status( app.config['mysql_pool'], card_id, {'user':user_id,'status':'used'} )
-				# 给客户账户充值
-				new_info = { 'amount':the_info['price'], 'description':'星选卡充值' }
-				mysql_db.add_money( app.config['mysql_pool'],user_id, new_info )
-				res = {'res':'OK', 'reason':'成功充值%s元' %the_info['price'] }
+				if the_info['type']=='' or the_info['type']=='通用卡':
+					# 给客户账户充值
+					new_info = { 'amount':the_info['price'], 'description':'星选卡充值' }
+					mysql_db.add_money( app.config['mysql_pool'],user_id, new_info )
+					res = {'res':'OK', 'reason':'成功充值%s元' %the_info['price'] }
+				else:
+					res = {'res':'OK', 'reason':'成功添加1张%s卡' %the_info['name'] }
 
 		return  json.dumps( res )
 	
@@ -390,10 +397,17 @@ def create_app( test_config=None ):
 		else:
 			return json.dumps( [] )
 	
-
+	# [ {'price': 100.0, 'rest': 0.0, 'description':x, 'name':x, 'type':x, 't1':x, 't2':x, 'card_id':x, 'status': 'norm', 'image':x} ]
+	# image - 卡券图像，默认地址为: app.config['HTTP_ADDR'] + upload/product/xingxuan/cards/<type>.jpg
+	# 蛋糕卡-cake.jpg	中秋-ma.jpg
 	@app.route( '/api/my_cards/<string:uid>', methods = ['GET'] )
 	def get_all_my_cards( uid ):
 		res = mysql_db.get_my_cards( app.config['mysql_pool'], uid )
+		card_type = { '蛋糕卡':'cake.jpg', '中秋卡':'ma.jpg' }
+		for r in res:
+			if r['type'] in card_type:
+				r['image'] = app.config['HTTP_ADDR'] + 'upload/product/xingxuan/cards/' + card_type[r['type']]
+				
 		return json.dumps( res )
 	
 	
@@ -421,13 +435,6 @@ def create_app( test_config=None ):
 		res = mysql_db.cart_minus( app.config['mysql_pool'], uid, pid, product_price_id, z_id )
 		return json.dumps( res )
 	
-	'''
-	# /api/cart/del/205/7298/7299/1
-	@app.route( '/api/cart/del/<string:uid>/<string:pid>/<string:product_price_id>/<string:z_id>', methods = ['GET'] )	
-	def cart_del( uid, pid, product_price_id, z_id ):
-		res = mysql_db.cart_del( app.config['mysql_pool'], uid, pid, product_price_id, z_id )
-		return json.dumps( res )
-	'''
 	
 	# /api/cart/del/205
 	# post data: [ [pid,product_price_id,z_id], []... ] json-str

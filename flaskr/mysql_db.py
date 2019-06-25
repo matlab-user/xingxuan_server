@@ -90,6 +90,7 @@ def get_products_info_by_names( pool, names_list ):
 	return out_res
 
 
+'''
 # res - [ {product_id:xxx, name:xxx, smallpicture:xxx, listpicture:xxx, sp_n:xx, sp_v:xx}, .... ]
 # sp_v 该规格的价格
 def get_category_goods( pool, category_id, limit=50 ):
@@ -134,7 +135,42 @@ def get_category_goods( pool, category_id, limit=50 ):
 	cur.close()
 	pool.release( conn )
 	return list( res.values() )
+'''
 
+# res - [ {product_id:xxx, name:xxx, smallpicture:xxx, sp_n:xx, sp_v:xx}, .... ]
+# sp_v 该规格的价格
+def get_category_goods( pool, category_id, limit=50 ):
+	res, pids_list = {}, []
+	conn = pool.get_conn()
+	cur = conn.cursor()
+	
+	sql_str = 'SELECT product_id, name, smallpicture FROM gk_product WHERE category_id=%s AND status=1 LIMIT ' + str(limit)
+	cur.execute( sql_str, category_id )
+	goods_list = cur.fetchall()
+	for g in goods_list:
+		res[str(g['product_id'])] = { 'product_id':g['product_id'], 'name':g['name'], 'smallpicture':current_app.config['HTTP_ADDR']+g['smallpicture'] }
+		pids_list.append( g['product_id'] )
+	
+	if pids_list==[]:
+		cur.close()
+		pool.release( conn )
+		return []
+			
+	sql_str = 'SELECT product_id, attribute, price FROM gk_specifications WHERE '
+	for pid in pids_list:
+		sql_str += 'product_id=%s OR '
+	sql_str = sql_str[0:-4]
+	cur.execute( sql_str, pids_list )
+	spcs_list = cur.fetchall()
+	for v in spcs_list:
+		pid_str = str( v['product_id'] )
+		res[pid_str]['sp_n'] = v['attribute']
+		res[pid_str]['sp_v'] = v['price']
+		
+	cur.close()
+	pool.release( conn )
+	return list( res.values() )
+	
 
 # 尽最大可能返回 lens长度， num个 code 集合
 def choice_from( lens, num ):
@@ -222,9 +258,9 @@ def get_card_info( pool, card_id ):
 
 # res - [ {}, {}, {}....]
 # 增加 icon 字段
-# { {'price': 100.0, 'rest': 0.0, 'description':xxx, 'name':xxx, 'type':xxx, 't1': 1559021432.0, 't2': 1622093432.0, 'card_id': '5IWDSW', 'status': 'norm'} }
+# [ {'price': 100.0, 'rest': 0.0, 'description':xxx, 'name':xxx, 'type':xxx, 't1': 1559021432.0, 't2': 1622093432.0, 'card_id': '5IWDSW', 'status': 'norm'} ]
 def get_my_cards( pool, uid ):
-	res = {}
+	res = []
 	conn = pool.get_conn()
 	cur = conn.cursor()
 	
@@ -461,14 +497,15 @@ def get_zone_goods( pool, z_id ):
 	conn = pool.get_conn()
 	cur = conn.cursor()
 	
-	sql_str = 'SELECT goods FROM wdh_zone WHERE t1<=%s AND t2>=%s AND status<>"ban" AND id=%s'
+	sql_str = 'SELECT cards_type, goods FROM wdh_zone WHERE t1<=%s AND t2>=%s AND status<>"ban" AND id=%s'
 	cur.execute( sql_str, (now, now, z_id) )
 	res = cur.fetchall()
-	res = json.loads( res[0]['goods'] )
-
+	goods = json.loads( res[0]['goods'] )
+	cards_type = json.loads( res[0]['cards_type']  )
+	
 	cur.close()
 	pool.release( conn )
-	return res
+	return goods, cards_type
 	
 
 # o_info - {z_id, card_id, g_sp_list:[[gid,sp,num,price,price_id]...], uid, addr, phone, amount, consignee }
@@ -587,10 +624,15 @@ def gen_order( pool, o_info ):
 	
 	# 清理购物车
 	# o_info - {z_id, card_id, g_sp_list:[[gid,sp,num,price,price_id]...], uid, addr, phone, amount, consignee }
+	g_info_list = []
 	for g in o_info['g_sp_list']:
 		pid, sp_id = g[0], str(g[-1])
-		res = cart_minus( pool, uid, pid, sp_id, z_id )
-
+		#res = cart_minus( pool, uid, pid, sp_id, z_id )
+		g_info_list.append( [pid, int(sp_id), int(o_info['z_id'])] )
+	
+	# g_info_list: [ [pid,product_price_id,z_id], []... ] 
+	cart_del( pool, uid, g_info_list )
+		
 	cur.close()
 	pool.release( conn )
 	return {'res':'OK'}
@@ -723,8 +765,9 @@ def cart_minus( pool, uid, pid, sp_id, z_id ):
 	pool.release( conn )
 	return out_res
 
-	
-# g_info_list: [ [pid,product_price_id,z_id], []... ] 
+
+# g_info_list: [ [pid,product_price_id,z_id], []... ]
+# [pid, product_price_id, z_id] - 都为 int 类型
 def cart_del( pool, uid, g_info_list ):
 	conn = pool.get_conn()
 	cur = conn.cursor()
