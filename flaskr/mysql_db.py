@@ -769,14 +769,19 @@ def cart_minus( pool, uid, pid, sp_id, z_id ):
 # g_info_list: [ [pid,product_price_id,z_id], []... ]
 # [pid, product_price_id, z_id] - 都为 int 类型
 def cart_del( pool, uid, g_info_list ):
-	conn = pool.get_conn()
-	cur = conn.cursor()
-	
+
 	data, out_res = [], { 'res':'OK' }
 	sql_str = 'SELECT pid, goods, z_id FROM wdh_cart WHERE '
-	for g in g_info_list:
-		sql_str += '(uid=%s AND pid=%s AND z_id=%s) OR '
-		data.extend( [uid, g[0], g[2]] )
+	try:
+		for g in g_info_list:
+			sql_str += '(uid=%s AND pid=%s AND z_id=%s) OR '
+			data.extend( [uid, g[0], g[2]] )
+	except:
+		return { 'res':'NO', 'reason':'传入参数错误' }
+	
+	conn = pool.get_conn()
+	cur = conn.cursor()
+
 	sql_str = sql_str[0:-4]
 	cur.execute( sql_str, data )
 	res = cur.fetchall()
