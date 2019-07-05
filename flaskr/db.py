@@ -4,7 +4,7 @@ from flask import current_app
 import fcntl, os
 
 # redis 结构:
-#	main_page		a:[ {‘product_id’:xx,’name’:xxx,’smallpicture’:xxx,’sp_n’:xx,’sp_v’:xxx, 'sp_id':xx},... ],  b:[.......]
+#	main_page		a:[ {‘product_id’:xx,’name’:xxx,’smallpicture’:xxx,’sp_n’:xx,’sp_v’:xxx},... ],  b:[.......]
 #	category_page	类id:[ {product_id:xxx, name:xxx, smallpicture:xxx, listpicture:xxx, sp_n:xx, sp_v:xx}, .... ] ]
 #	goods_names		所有产品名称，用,号间隔保存成字符串，用于搜索
 

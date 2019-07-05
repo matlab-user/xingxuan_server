@@ -11,50 +11,32 @@ def create_conn_pool( db_host, db_user, db_passwd, db_name ):
 	return pool
 
 
-def get_star_v( pool, pid ):
-	sql_str = 'SELECT star_v FROM gk_product WHERE product_id=%s'
-	
+# [ {‘product_id’:xx,’name’:xxx,’smallpicture’:xxx,’sp_n’:xx,’sp_v’:xxx}, ... ]
+def get_products_info( pool, pids_list ):
 	conn = pool.get_conn()
 	cur = conn.cursor()
-	cur.execute( sql_str, (pid,) )
-	res = cur.fetchone()
-	cur.close()
-	pool.release( conn )
-	
-	res_str = res['star_v']
-	
-	return res_str
-
-
-
-# [ {‘product_id’:xx,’name’:xxx,’smallpicture’:xxx,’sp_n’:xx,’sp_v’:xxx, 'sp_id':xx,'m_price':xx}, ... ]
-# sp_n - 规格名称;	sp_v - 价格;	sp_id - 规格id
-def get_products_info( pool, pids_list ):
 	out_res = []
-
-	sql_str = 'SELECT gk_product.product_id, name, smallpicture, attribute, price, gk_specifications.product_price_id, m_price FROM gk_product \
+	
+	sql_str = 'SELECT gk_product.product_id, name, smallpicture, attribute, price FROM gk_product \
 				LEFT JOIN gk_specifications ON gk_product.product_id=gk_specifications.product_id WHERE '
 	for pid in pids_list:
 		sql_str += 'gk_product.product_id=%s OR '
+		
 	sql_str = sql_str[0:-3]
-	
-	conn = pool.get_conn()
-	cur = conn.cursor()
 	cur.execute( sql_str, pids_list )
 	res = cur.fetchall()
-	cur.close()
-	pool.release( conn )
 	
 	for pid in pids_list:
 		for r in res:
 			if r['product_id']==pid:
 				r['smallpicture'] = current_app.config['HTTP_ADDR'] + r['smallpicture']
 				r['sp_n'], r['sp_v'] = r['attribute'], r['price']
-				r['sp_id'] = r['product_price_id']
-				del r['attribute'], r['price'], r['product_price_id']
+				del r['attribute'], r['price']
 				out_res.append( r )
 				break
-				
+
+	cur.close()
+	pool.release( conn )
 	return out_res
 
 	
@@ -64,7 +46,7 @@ def get_products_the_sp_info( pool, pid_sp_list ):
 	conn = pool.get_conn()
 	cur = conn.cursor()
 	
-	sql_str = 'SELECT product_id, price, product_price_id, m_price FROM gk_specifications WHERE '
+	sql_str = 'SELECT product_id, price, product_price_id FROM gk_specifications WHERE '
 	data = []
 	for e in pid_sp_list:
 		sql_str += '(product_id=%s AND attribute=%s) OR '
@@ -79,14 +61,14 @@ def get_products_the_sp_info( pool, pid_sp_list ):
 	return res
 	
 	
-# [ {‘product_id’:xx,’name’:xxx,’smallpicture’:xxx,’sp_n’:xx,’sp_v’:xxx, sp_id:xx, m_price:xxx}, ... ]
+# [ {‘product_id’:xx,’name’:xxx,’smallpicture’:xxx,’sp_n’:xx,’sp_v’:xxx}, ... ]
 # names_list 中名称的顺序很关键
 def get_products_info_by_names( pool, names_list ):
 	conn = pool.get_conn()
 	cur = conn.cursor()
 	
 	out_res = []
-	sql_str = 'SELECT gk_product.product_id, smallpicture, name, price, attribute, product_price_id, m_price FROM gk_product LEFT JOIN gk_specifications \
+	sql_str = 'SELECT gk_product.product_id, smallpicture, name, price, attribute FROM gk_product LEFT JOIN gk_specifications \
 				ON gk_product.product_id=gk_specifications.product_id WHERE gk_product.product_id>=7000 AND ( '
 	for n in names_list:
 		sql_str += 'name=%s OR '
@@ -100,8 +82,7 @@ def get_products_info_by_names( pool, names_list ):
 			if r['name']==n:
 				r['smallpicture'] = current_app.config['HTTP_ADDR'] + r['smallpicture']
 				r['sp_n'], r['sp_v'] = r['attribute'], r['price']
-				r['sp_id'] = r['product_price_id']
-				del r['attribute'], r['price'], r['product_price_id']
+				del r['attribute'], r['price']
 				out_res.append( r )
 				
 	cur.close()
@@ -109,7 +90,7 @@ def get_products_info_by_names( pool, names_list ):
 	return out_res
 
 
-# res - [ {product_id:xxx, name:xxx, smallpicture:xxx, sp_n:xx, sp_v:xx, sp_id:xx, m_p:xx}, .... ]
+# res - [ {product_id:xxx, name:xxx, smallpicture:xxx, sp_n:xx, sp_v:xx}, .... ]
 # sp_v 该规格的价格
 def get_category_goods( pool, category_id, limit=50 ):
 	res, pids_list = {}, []
@@ -128,7 +109,7 @@ def get_category_goods( pool, category_id, limit=50 ):
 		pool.release( conn )
 		return []
 			
-	sql_str = 'SELECT product_id, attribute, price, product_price_id, m_price FROM gk_specifications WHERE '
+	sql_str = 'SELECT product_id, attribute, price FROM gk_specifications WHERE '
 	for pid in pids_list:
 		sql_str += 'product_id=%s OR '
 	sql_str = sql_str[0:-4]
@@ -138,8 +119,6 @@ def get_category_goods( pool, category_id, limit=50 ):
 		pid_str = str( v['product_id'] )
 		res[pid_str]['sp_n'] = v['attribute']
 		res[pid_str]['sp_v'] = v['price']
-		res[pid_str]['sp_id'] = v['product_price_id']
-		res[pid_str]['m_price'] = v['m_price']
 		
 	cur.close()
 	pool.release( conn )
@@ -474,13 +453,9 @@ def get_zone_goods( pool, z_id ):
 	sql_str = 'SELECT cards_type, goods FROM wdh_zone WHERE t1<=%s AND t2>=%s AND status<>"ban" AND id=%s'
 	cur.execute( sql_str, (now, now, z_id) )
 	res = cur.fetchall()
-	if len(res)>0:
-		goods = json.loads( res[0]['goods'] )
-		cards_type = json.loads( res[0]['cards_type']  )
-	else:
-		goods = []
-		cards_type = []
-
+	goods = json.loads( res[0]['goods'] )
+	cards_type = json.loads( res[0]['cards_type']  )
+	
 	cur.close()
 	pool.release( conn )
 	return goods, cards_type
@@ -494,7 +469,7 @@ def get_zone_goods( pool, z_id ):
 #	order_time			下单时间
 #	order_no			订单id
 #	shipping_address	收货地址
-#	payUp_mode			3-卡券结帐, 1-余额支付, 4-卡余额混合支付
+#	payUp_mode			3-卡券结帐
 #	consignee			收货人
 #	telephone			联系电话
 #	store_id			产品商家id
@@ -514,119 +489,6 @@ def get_zone_goods( pool, z_id ):
 #	order_flow_time
 #	opration_desc
 #	order_id
-
-# o_info - {card_id, g_sp_list:[[gid,sp,num,z_id,price,price_id]...], uid, addr, phone, amount, consignee }	
-# COST - {'card_cost':card_cost, 'rest_cost':rest_cost}
-def gen_order_2( pool, o_info, COST ):
-	now, res = time.time(), []
-	conn = pool.get_conn()
-	cur = conn.cursor()
-
-	lt, uid = time.localtime( now ), o_info['uid']
-	tstr_sec = time.strftime( '%Y-%m-%d %H:%M:%S', lt )
-	 
-	sql_str = 'SELECT product_id, store_id, name FROM gk_product WHERE '
-	g_ids, g_info_dict = [], {}
-	for g in o_info['g_sp_list']:
-		sql_str += 'product_id=%s OR '
-		pid = str( g[0] )
-		g_ids.append( g[0] )
-		g_info_dict[ pid ] = { 'sp':g[1], 'num':g[2], 'p':g[4], 'price_id':g[5] }	
-	sql_str = sql_str[0:-3]	
-	
-	cur.execute( sql_str, g_ids )
-	res = cur.fetchall()
-	g_store_id = {}
-	for r in res:
-		pid, store_id, name = str(r['product_id']), str(r['store_id']), r['name']
-		sp, num, p, price_id = g_info_dict[pid]['sp'], g_info_dict[pid]['num'], g_info_dict[pid]['p'], g_info_dict[pid]['price_id']
-		mid = { 'pid':int(pid), 'sp':sp, 'num':num, 'p':p, 'price_id':price_id, 'name':name }
-		if store_id not in g_store_id:
-			g_store_id[store_id] = {}
-			g_store_id[store_id]['g'] = [ mid ]
-			g_store_id[store_id]['sum'] = mid['num'] * mid['p']
-		else:
-			g_store_id[store_id]['g'].append( mid )	
-			g_store_id[store_id]['sum'] += mid['num'] * mid['p']
-	
-	# 判断支付方式
-	# {'card_cost':card_cost, 'rest_cost':rest_cost}
-	if COST['card_cost']>0:
-		if COST['rest_cost']>0:
-			payUp_mode = 4		# 混合支付
-		else:
-			payUp_mode = 3		# 卡券支付
-	else:
-		payUp_mode = 1			# 余额支付
-		
-	# 写订单数据
-	# g_store_id - { store_id:{'g':[{'pid':x, 'sp':x, 'num':x, 'p':x, 'price_id':x, 'name':x}...],'sum':x},... }
-	sql_str = 'SELECT order_id FROM gk_order WHERE order_no=%s'
-	sql_str_1 = 'INSERT INTO gk_order (order_amount,client_id,status,order_time,order_no,shipping_address,payUp_mode, \
-			consignee, telephone, store_id, order_type ) VALUES ( %s, %s, 2, %s, %s, %s, %s, %s, %s, %s, 3 )'
-	sql_str_2 = 'INSERT INTO gk_order_product (product_id, product_price_id, product_name, product_attribute, \
-			product_price, number, order_id, business_id) VALUES ( %s, %s, %s, %s, %s, %s, %s, %s )'
-	for k, v in g_store_id.items():
-		order_no = '%d_%s_%s' %( int(now*1000), o_info['uid'], k )
-		data = [ v['sum'], o_info['uid'], lt, order_no, o_info['addr'], payUp_mode, o_info['consignee'], o_info['phone'], k ]
-		cur.execute( sql_str_1, data )
-		conn.commit()
-		
-		cur.execute( sql_str, order_no )
-		the_id = cur.fetchone()
-		the_id = the_id['order_id']
-		
-		data = []
-		for g in v['g']:
-			mid = ( g['pid'], g['price_id'], g['name'], g['sp'], g['p'], g['num'], the_id, o_info['uid'] )
-			data.append( mid )
-		cur.executemany( sql_str_2, data )
-		conn.commit()
-	
-	if COST['card_cost']>0:
-		# 减去卡金额
-		sql_str = 'SELECT rest FROM wdh_cards WHERE card_id=%s'
-		cur.execute( sql_str, o_info['card_id'] )
-		rest = cur.fetchone()
-		rest = rest['rest']
-
-		rest -= COST['card_cost']
-		if rest>0:
-			sql_str = 'UPDATE wdh_cards SET rest=%s WHERE card_id=%s'
-			data = [ rest, o_info['card_id'] ]
-		else:	
-			sql_str = 'UPDATE wdh_cards SET rest=0, status="used" WHERE card_id=%s'
-			data = o_info['card_id']	
-		cur.execute( sql_str, data )
-		conn.commit()
-	
-	if COST['rest_cost']>0:
-		# 减去余额金额(已经保证有足够的金额)
-		sql_str = 'UPDATE gk_client	SET money=money-%s WHERE id=%s'
-		data = ( COST['rest_cost'], uid )
-		cur.execute( sql_str, data )
-		conn.commit()
-	
-	# 记录消费记录
-	sql_str = 'INSERT INTO gk_order_log (order_state, order_flow_time, opration_desc, order_id) VALUES (3, %s,"订单已支付", %s)'
-	cur.execute( sql_str, (tstr_sec,the_id) )
-	conn.commit()
-	
-	# 清理购物车
-	# o_info - {card_id, g_sp_list:[[gid,sp,num,z_id, price,price_id]...], uid, addr, phone, amount, consignee }
-	g_info_list = []
-	for g in o_info['g_sp_list']:
-		pid, sp_id = g[0], str(g[-1])
-		g_info_list.append( [pid, int(sp_id), g[3]] )
-	# g_info_list: [ [pid,product_price_id,z_id], []... ] 
-	cart_del( pool, uid, g_info_list )
-		
-	cur.close()
-	pool.release( conn )
-	return {'res':'OK'}
-		
-'''		
-# o_info - {z_id, card_id, g_sp_list:[[gid,sp,num,price,price_id]...], uid, addr, phone, amount, consignee }		
 def gen_order( pool, o_info, api_type=1 ):
 	now, res = time.time(), []
 	conn = pool.get_conn()
@@ -745,7 +607,6 @@ def gen_order( pool, o_info, api_type=1 ):
 	cur.close()
 	pool.release( conn )
 	return {'res':'OK'}
-'''
 
 
 # wdh_cart
@@ -758,7 +619,7 @@ def gen_order( pool, o_info, api_type=1 ):
 #	z_id
 # 产品增加数量，增加新产品
 # in - z_id int 类型
-def cart_add( pool, uid, pid, sp_id, z_id, NUM=1 ):
+def cart_add( pool, uid, pid, sp_id, z_id ):
 	now, mid_res = time.time(), { 'res':'OK' }
 	conn = pool.get_conn()
 	cur = conn.cursor()
@@ -801,7 +662,7 @@ def cart_add( pool, uid, pid, sp_id, z_id, NUM=1 ):
 		res = cur.fetchone()
 		store_name = res['store_name']
 		
-		goods = { sp_id: {'sp':sp, 'p':p, 'num':NUM} }
+		goods = { sp_id: {'sp':sp, 'p':p, 'num':1} }
 		goods = json.dumps( goods )
 		sql_str = 'INSERT INTO wdh_cart (uid,goods,t,pid,store_id,store_name,z_id) VALUES (%s,%s,%s,%s,%s,%s,%s)' 
 		cur.execute( sql_str, (uid, goods, now, pid, store_id, store_name, z_id) )
@@ -812,7 +673,7 @@ def cart_add( pool, uid, pid, sp_id, z_id, NUM=1 ):
 	else:				# 更新产品数量
 		goods = json.loads( res['goods'] )
 		if sp_id in goods:
-			goods[sp_id]['num'] += NUM
+			goods[sp_id]['num'] += 1
 		else:
 			sql_str = 'SELECT attribute, price FROM gk_specifications WHERE product_id=%s AND product_price_id=%s'
 			cur.execute( sql_str, [pid, sp_id] )
@@ -823,7 +684,7 @@ def cart_add( pool, uid, pid, sp_id, z_id, NUM=1 ):
 				pool.release( conn )
 				return mid_res
 			else:
-				mid = { 'sp': res['attribute'], 'p':res['price'], 'num':NUM }
+				mid = { 'sp': res['attribute'], 'p':res['price'], 'num':1 }
 				goods[sp_id] = mid
 				
 		goods = json.dumps( goods )
@@ -943,7 +804,7 @@ def cart_del( pool, uid, g_info_list ):
 #	sp_id、sp、p、z_id、num
 #
 #  最终输出结构，例: 
-#	[ {'store_id':x, 'store_name':x, 'goods':[ {'pid':x,'name':x,'pic':x, 'g_info':{'sp_id':x,'sp':x, 'p':x, 'z_id':x, 'num':z,'cards_type':x} }, {}...] }, {}...] }, ... ]
+#	[ {'store_id':x, 'store_name':x, 'goods':[ {'pid':x,'name':x,'pic':x, 'g_info':{'sp_id':x,'sp':x, 'p':x, 'z_id':x, 'num':z} }, {}...] }, {}...] }, ... ]
 #	
 #	处理过程的中间格式为:
 #	{ <store_id1>:{'name':store_name, pid1:{ 'name':产品名称, 'pic':图标路径, 'sp_info':[ {g_info},...] }, pid2:{}... }, <store_id2>:{} }
@@ -965,23 +826,8 @@ def cart_get( pool, uid ):
 		cur.close()
 		pool.release( conn )
 		return []
-	
-	z_ids, zone_id_type = set(), {}
+
 	for r in res:
-		z_ids.add( r['z_id'] )
-	
-	sql_str = 'SELECT id, cards_type FROM wdh_zone WHERE '
-	for z in z_ids:
-		sql_str += 'id=%s OR '
-	sql_str = sql_str[0:-4]
-	
-	cur.execute( sql_str, list(z_ids) )
-	res_card_types = cur.fetchall()
-	for r in res_card_types:
-		zone_id_type[str(r['id'])] = json.loads( r['cards_type'] )
-	
-	for r in res:
-		z_ids.add( r['z_id'] )
 		store_id, goods, store_name, pid, z_id = r['store_id'], r['goods'], r['store_name'], r['pid'], r['z_id']
 		pids_list.append( pid )
 		
@@ -994,11 +840,9 @@ def cart_get( pool, uid ):
 
 		for k, v in goods.items():
 			v['z_id'] = z_id
-			if str(z_id) in zone_id_type:
-				v['cards_type'] = zone_id_type[ str(z_id) ]
 			v['sp_id'] = k
 			out_res[ store_id ][str(pid)]['sp_info'].append( v )
-	
+				
 	sql_str = 'SELECT product_id, name, smallpicture, store_id FROM gk_product WHERE '
 	for p in pids_list:
 		sql_str += ' product_id=%s OR'
@@ -1097,7 +941,7 @@ def get_user_money( pool, user_id ):
 
 
 # zone_ids_list - [xxx,xxx,xxx]
-# out_res - [ {'enable':'Y'/'N', 'price': 100.0, 'rest': 0.0, 'description':xxx, 'name':xxx, 'type':xxx, 't1': 1559021432.0, 't2': 1622093432.0, 'card_id': '5IWDSW', 'status': 'norm'} ]
+# out_res - [ {'price': 100.0, 'rest': 0.0, 'description':xxx, 'name':xxx, 'type':xxx, 't1': 1559021432.0, 't2': 1622093432.0, 'card_id': '5IWDSW', 'status': 'norm'} ]
 # 其中第一个为最快过期的卡券
 def available_cards( pool, uid, zone_ids_list ):
 	all_my_cards = get_my_cards( pool, uid )
@@ -1119,223 +963,23 @@ def available_cards( pool, uid, zone_ids_list ):
 	cur.close()
 	pool.release( conn )
 	
-	out_res, zone_cards, mid, mid_rest = [], set(), {}, []
+	out_res, zone_cards, mid = [], set(), {}
 	# cards_type - [xx,xx,xx..] 的 json-str
 	for r in res:
-		zone_cards.update( json.loads( r['cards_type'] ) )
+		zone_cards.update( json.loads( r['cards_type'] )
 	zone_cards = list( zone_cards )
-		
-	for mc in all_my_cards:
-		if mc['type'] in zone_cards and mc['rest']>0:
-			mc['enable'] = 'Y'
-			mid[mc['t2']] = mc
-		else:
-			mc['enable'] = 'N'
-			mid_rest.append( mc )
 	
-	keys = list( mid.keys() )
+	for zc in zone_cards:
+		for mc in all_my_cards:
+			if mc['type']==zc and mc['rest']>0:
+				mid[mc['t2']] = mc
+	keys = mid.keys()
 	keys.sort()
 	out_res = [ mid[key] for key in keys ]
-	out_res.extend( mid_rest )
 	
 	return out_res
 	
-
-def del_addrs( pool, uid, addr_id ):
-	addr_json_str = get_addrs( pool, uid )
-	addrs = json.loads( addr_json_str )
 	
-	index = -1
-	for i, a in enumerate( addrs ):
-		if a['id']==addr_id:
-			index = i
-	
-	if index>=0:
-		del addrs[index]
-	addrs_str = json.dumps( addrs )
-	
-	conn = pool.get_conn()
-	cur = conn.cursor()
-	
-	sql_str = 'UPDATE wdh_addrs SET addrs=%s WHERE uid=%s'
-	cur.execute( sql_str, (addrs_str, uid) )
-	
-	cur.close()
-	pool.release( conn )
-	
-	return {'res':'OK'}
-	
-
-def set_addr_default( pool, uid, addr_id ):
-	addr_json_str = get_addrs( pool, uid )
-	addrs = json.loads( addr_json_str )
-	
-	for a in addrs:
-		if a['id']==addr_id:
-			a['default'] = 1
-		elif 'default' in a:
-			del a['default']
-	
-	addrs_str = json.dumps( addrs )
-	
-	conn = pool.get_conn()
-	cur = conn.cursor()
-	
-	sql_str = 'UPDATE wdh_addrs SET addrs=%s WHERE uid=%s'
-	cur.execute( sql_str, (addrs_str, uid) )
-	
-	cur.close()
-	pool.release( conn )
-	
-	return {'res':'OK'}
-	
-	
-def get_addrs( pool, uid ):
-	conn = pool.get_conn()
-	cur = conn.cursor()
-	
-	out_res = []
-	sql_str = 'SELECT addrs From wdh_addrs WHERE uid=%s'
-	cur.execute( sql_str, (uid,) )
-	res = cur.fetchone()
-	if res is not None:
-		res_json_str = res['addrs']
-	else:
-		res_json_str = ''
-	
-	cur.close()
-	pool.release( conn )
-	
-	return res_json_str
-
-
-# new_addr - { 'id':xx, 'label':xx, 'phone':xx, 'name':xx, 'addr':xx, 'pca':'xx-xx-xx', 'default':true/fasle }
-# 传入函数里的是 json-str
-# pca - 省市区
-# 如果 id==-1， 新增; 如果 id!=-1, 覆盖
-def set_addr( pool, uid, new_addr ):
-	try:
-		new_addr = json.loads( new_addr )
-	except:
-		return {'res':'NO', 'reason':'地址格式错误' }
-		
-	conn = pool.get_conn()
-	cur = conn.cursor()
-	
-	sql_str = 'SELECT addrs From wdh_addrs WHERE uid=%s'
-	cur.execute( sql_str, (uid,) )
-	res = cur.fetchone()
-
-	if res is not None:
-		addrs_str = res['addrs']
-		
-		# addrs - [ {}, {}, {}... ]
-		addrs, last_id, the_one = json.loads( addrs_str ), 0, -1
-		if 'default' in new_addr and new_addr['default']==1:
-			for i, a in enumerate( addrs ):
-				if 'default' in a:
-					del a['default']
-				if a['id']>last_id:
-					if isinstance( a['id'], str ):
-						a['id'] = int( a['id'] )
-						last_id = a['id']
-					else:
-						last_id = a['id']
-				if a['id']==new_addr['id']:
-					the_one = i
-		else:
-			if 'default' in new_addr:
-				del new_addr['default']
-				
-			for i, a in enumerate( addrs ):
-				if isinstance( a['id'], str ):
-					a['id'] = int( a['id'] )
-					
-				if a['id']>last_id:
-					last_id = a['id']
-				if a['id']==new_addr['id']:
-					the_one = i	
-			
-		if new_addr['id']==-1:
-			new_addr['id'] = last_id + 1
-		elif the_one>=0:
-			del addrs[the_one]
-		addrs.append( new_addr )
-
-		addrs_str = json.dumps( addrs )
-		
-		sql_str = 'UPDATE wdh_addrs SET addrs=%s WHERE uid=%s'
-		data = ( addrs_str, uid )
-	else:		# 数据库中目前无此人数据，使用 insert 加入
-		new_addr['id'] = 1
-		sql_addrs = [ new_addr ]
-		new_addr = json.dumps( sql_addrs )
-		sql_str = 'INSERT INTO wdh_addrs (uid, addrs) VALUES (%s, %s)'
-		data = ( uid, new_addr )	
-
-	cur.execute( sql_str, data )
-	cur.close()
-	pool.release( conn )
-	
-	return {'res':'OK'}
-	
-#---------------------------------------------------------------------------------
-# 后台功能函数
-#---------------------------------------------------------------------------------
-def set_goods_status( pool, pid, status ):
-	sql_str = 'UPDATE gk_product SET status=%s WHERE product_id=%s'
-	conn = pool.get_conn()
-	cur = conn.cursor()
-	cur.execute( sql_str, (status, pid) )
-	cur.close()
-	pool.release( conn )
-
-	return {'res':'OK'}
-
-	
-# ('pid', ''), ('store_id', ''), ('name', ''), ('category', 'A'), ('sub_category', 'SA')
-def set_update_goods_info_1( pool, goods_info_1 ):
-	if goods_info_1['pid']<0:
-		sql_str = 'INSERT INTO gk_product (name, store_id, category_id ) VALUES (%s,%s,%s)'
-		data = ( goods_info_1['name'], goods_info_1['store_id'], goods_info_1['category_id'] )
-	else:
-		sql_str = 'UPDATE gk_product SET name=%s, store_id=%s, category_id=%s WHERE product_id=%s'
-		data = ( goods_info_1['name'], goods_info_1['store_id'], goods_info_1['category_id'], goods_info_1['product_id'] )
-		
-	conn = pool.get_conn()
-	cur = conn.cursor()
-	cur.execute( sql_str, data )
-	cur.close()
-	pool.release( conn )
-
-	return {'res':'OK'}
-
-
-def set_goods_sps( pool, pid, data ):
-	sql_str = 'DELETE FROM gk_specifications WHERE product_id=%s'
-	conn = pool.get_conn()
-	cur = conn.cursor()
-	cur.execute( sql_str, (pid,) )
-	conn.commit()
-	
-	vs = []
-	sql_str = 'UPDATE gk_specifications SET attribute=%s, price=%s, m_price=%s, product_id=%s'
-	for d in data:
-		mid = d.split( '-' )
-		if len(mid)<3:
-			return { 'res':'NO', 'reason':'%s 格式不正确' %d }
-		vs.append( mid )
-	
-	for v in vs:
-		cur.execute( sql_str, (v[0],v[1],v[2],pid) )	
-	conn.commit()
-	
-	cur.close()
-	pool.release( conn )
-
-	return {'res':'OK'}
-	
-
 if __name__=='__main__':
 	'''
 	db_user = 'guocool'
