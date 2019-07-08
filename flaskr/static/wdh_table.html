@@ -24,6 +24,7 @@
 			}
 			
 <<<<<<< HEAD
+<<<<<<< HEAD
 			.input_image_div_lg {
 				padding: 0;
 				margin: 40px;
@@ -38,6 +39,9 @@
 			}
 			
 			.file {
+=======
+			 .file {
+>>>>>>> df1c32b90130a29f005e29f6e272c9b506439a1f
 =======
 			 .file {
 >>>>>>> df1c32b90130a29f005e29f6e272c9b506439a1f
@@ -67,7 +71,10 @@
 			.wdh_margin {
 				margin: 20px 10px;
 <<<<<<< HEAD
+<<<<<<< HEAD
 				padding-left: 30px;
+=======
+>>>>>>> df1c32b90130a29f005e29f6e272c9b506439a1f
 =======
 >>>>>>> df1c32b90130a29f005e29f6e272c9b506439a1f
 			}
@@ -76,6 +83,7 @@
 				height: 38px;
 				
 			}
+<<<<<<< HEAD
 <<<<<<< HEAD
 			
 			.wdh_font {
@@ -102,11 +110,17 @@
 				line-height: 38px;
 				font-size: 1.4em;
 >>>>>>> df1c32b90130a29f005e29f6e272c9b506439a1f
+=======
+			.wdh_font {
+				line-height: 38px;
+				font-size: 1.4em;
+>>>>>>> df1c32b90130a29f005e29f6e272c9b506439a1f
 			}
 		</style>
 	</head>
 	
 	<body'>
+<<<<<<< HEAD
 <<<<<<< HEAD
 		<div class='container-fluid wdh_margin mx-auto'>
 			
@@ -555,6 +569,61 @@
 					
 				}
 			
+=======
+		<div class='container-fluid wdh_margin'>
+			<h2>商品信息维护</h2>
+			<div class='row wdh_margin form-group'>
+				<label class="form-label wdh_font">ID:&nbsp;&nbsp;&nbsp;&nbsp;</label><input id='pid' type='text' class="form-control col-lg-1"/>
+			</div>
+			
+			<div class='input_image_div'>
+				<div class='input_image'>
+					<input type="file" id="icon_file" class="btn btn-default file" />
+					<img class="img-rounded icon" />
+				</div>
+				</br>
+				<p class='row_line'>
+					<button id='up_icon' type='button' class='col-lg-6'>上传</button>
+				</p>
+			</div>
+		</div>
+			
+		<script src="https://code.jquery.com/jquery-3.3.1.min.js" integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8=" crossorigin="anonymous"></script>
+		<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.2.1/js/bootstrap.min.js" integrity="sha384-B0UglyR+jN6CkvvICOB2joaf5I4l3gm9GU6Hc1og6Ls7i6U/mkkaduKaBhlAXv9k" crossorigin="anonymous"></script>
+		<script src="https://unpkg.com/bootstrap-table@1.15.2/dist/bootstrap-table.min.js"></script>
+		<script src="https://unpkg.com/bootstrap-table@1.15.2/dist/extensions/print/bootstrap-table-print.min.js"></script>
+		
+		<script>
+			$( function () {
+			
+				$(':file').change( function( e ) {
+					var reader = new FileReader();
+					var file = this.files[0];					
+					
+					reader.onload = function () {
+						$('.icon').attr( 'src', reader.result );
+					};
+					reader.readAsDataURL( file );
+				} );
+			
+			
+				$('#up_icon').click( function() {
+					var formData = new FormData();
+					formData.append( 'file', $('#icon_file')[0].files[0] );
+
+					$.ajax( { url:'/upload', type: 'POST', data: formData,  processData: false, contentType: false,
+						success : function( res ) { 
+							$('#order_res_show').html( res );
+						}, 
+						error : function( res ) { 
+							$('#order_res_show').html( 'error' );
+						} 
+					} );
+					
+				} );
+
+							
+>>>>>>> df1c32b90130a29f005e29f6e272c9b506439a1f
 =======
 		<div class='container-fluid wdh_margin'>
 			<h2>商品信息维护</h2>
