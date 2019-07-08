@@ -788,6 +788,8 @@ def gen_order( pool, o_info, api_type=1 ):
 
 =======
 >>>>>>> df1c32b90130a29f005e29f6e272c9b506439a1f
+=======
+>>>>>>> df1c32b90130a29f005e29f6e272c9b506439a1f
 
 # wdh_cart
 #	uid
@@ -1009,8 +1011,15 @@ def cart_get( pool, uid ):
 	
 	z_ids, zone_id_type = set(), {}
 <<<<<<< HEAD
+<<<<<<< HEAD
 	for r in res:
 		z_ids.add( r['z_id'] )
+=======
+	for r in res:
+		z_ids.add( r['z_id'] )
+		
+	print( 'a'*8, list(z_ids) )
+>>>>>>> df1c32b90130a29f005e29f6e272c9b506439a1f
 	
 	sql_str = 'SELECT id, cards_type FROM wdh_zone WHERE '
 	for z in z_ids:
@@ -1022,6 +1031,7 @@ def cart_get( pool, uid ):
 	for r in res_card_types:
 		zone_id_type[str(r['id'])] = json.loads( r['cards_type'] )
 	
+<<<<<<< HEAD
 	for r in res:
 		z_ids.add( r['z_id'] )
 =======
@@ -1045,6 +1055,12 @@ def cart_get( pool, uid ):
 	for r in res:
 		z_ids.add( r['z_id'] )
 >>>>>>> df1c32b90130a29f005e29f6e272c9b506439a1f
+=======
+	print( 'l'*8, zone_id_type )
+	
+	for r in res:
+		z_ids.add( r['z_id'] )
+>>>>>>> df1c32b90130a29f005e29f6e272c9b506439a1f
 		store_id, goods, store_name, pid, z_id = r['store_id'], r['goods'], r['store_name'], r['pid'], r['z_id']
 		pids_list.append( pid )
 		
@@ -1058,6 +1074,10 @@ def cart_get( pool, uid ):
 		for k, v in goods.items():
 			v['z_id'] = z_id
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+			print( 'm'*8,  z_id, str(z_id) in zone_id_type )
+>>>>>>> df1c32b90130a29f005e29f6e272c9b506439a1f
 =======
 			print( 'm'*8,  z_id, str(z_id) in zone_id_type )
 >>>>>>> df1c32b90130a29f005e29f6e272c9b506439a1f
