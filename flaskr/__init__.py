@@ -15,6 +15,7 @@
 import os, re
 import time, json
 from flask import Flask, g, request, session, send_file, redirect, url_for, abort
+from werkzeug.utils import secure_filename
 import hashlib, redis
 import logging
 import logging.handlers
@@ -71,6 +72,13 @@ def create_app( test_config=None ):
 		return 'Hello, World!</br></br>'
 	
 	
+	# 获取 h5 页面
+	@app.route( '/h5/<string:id>', methods = ['GET'] )
+	def get_h5( id ):
+		h5_page = 'h5_pages/h5_%s.html' %id
+		return app.send_static_file( h5_page )
+		
+	
 	def get_banner_info( banner_ids ):
 		res = []
 		for p in banner_ids:
@@ -83,6 +91,9 @@ def create_app( test_config=None ):
 				elif type=='z':
 					smallpicture = os.path.join( app.config['HTTP_ADDR'], 'upload/product/xingxuan/banner/zone/%d/banner.jpg' %id )
 					mid = { 'zone_id':id, 'smallpicture':smallpicture }
+				elif type=='h5':
+					smallpicture = os.path.join( app.config['HTTP_ADDR'], 'upload/product/xingxuan/banner/h5/%d/banner.jpg' %id )	
+					mid = { 'h5_id':id, 'smallpicture':smallpicture, 'url':'/h5/%d' %id }
 			else:				# 为产品id
 				mid = mysql_db.get_products_info( app.config['mysql_pool'], [p] )
 				mid = mid[0]
@@ -91,18 +102,21 @@ def create_app( test_config=None ):
 		return res
 	
 	
-	block_a = [ 7011, 7060, 7223, 7064, 7119, 7142, 7147 ]
-	block_b = [ 7081, 7222, 7043, 7122, 7063, 7085, 7128 ]
-	block_c = [ 7215, 7218, 7229, 7230, 7232, 7155, 7151, 7216, 7212, 7010 ]
-	block_d1 = [ 7058, 7013, 7034, 7036, 7038, 7044, 7046, 7079, 7081, 7085 ]
-	block_d2 = [ 7014, 7012, 7035, 7037, 7043, 7045, 7048, 7080, 7082, 7086]
-	banner = [ 7162, 'c_98' ]
+	block_a = [ 7158, 7170, 7195, 7172, 7189, 7192 ]
+	block_b = [ 7116, 7118, 7119, 7122, 7121, 7129, 7212 ]
+	block_c = [ 7047, 7046, 7014, 7045, 7049, 7062, 7065,7031 ]
+	block_d1 = [ 7099, 7137, 7141, 7144, 7145, 7154, 7225, 7166, 7147,7270,7269,7008,7267,7265,7266]
+	block_d2 = [ 7070, 7117, 7120, 7043, 7109,7261,7258,7256,7279,7284,7285,7288,7292,7290,7295]	
+	#banner = [ 7162, 'c_98' ]
+	banner = [ 7162, 'h5_1' ]
 	all_products = [ block_a, block_b, block_c, block_d1, block_d2 ]
 	
-	# [ {product_id, name, smallpicture, sp_n, sp_v}, {category_id:xxx, smallpicture:xxx}, {zone_id:xxx,smallpicture:xxx}... ]
+	# [ {product_id, name, smallpicture, sp_n, sp_v}, {category_id:xxx, smallpicture:xxx}, {zone_id:xxx,smallpicture:xxx}, {h5_id:xx,smallpicture:xx,url:xx}... ]
 	# banner -  [ 7162, 7062 ]	产品id
 	#			[ c_90, xxx ]	类id，要跳转到类中， 图片默认地址为: app.config['HTTP_ADDR'] + upload/product/xingxuan/banner/category/90/banner.jpg
 	#			[ z_89, xx ]	专区id，要跳转到专区中，图片默认地址为:  app.config['HTTP_ADDR'] + upload/product/xingxuan/banner/zone/89/banner.jpg
+	#			[ h5_1, xx]		h5页面跳转，图片默认地址为: app.config['HTTP_ADDR'] + upload/product/xingxuan/banner/h5/1/banner.jpg、
+	#							url 默认为: /h5/<string:id>, 文件保存在 flasker/static/h5_pages/内，命名方式为 h5_<id>.html 
 	@app.route( '/api/main_page/block/<string:b_name>', methods = ['POST', 'GET'] )
 	def get_the_block_products( b_name ):
 		res = ''
@@ -132,7 +146,7 @@ def create_app( test_config=None ):
 			if field!='banner':
 				res = mysql_db.get_products_info( app.config['mysql_pool'], product_ids )
 			else:		# 处理 banner 类型
-				get_banner_info( product_ids )
+				res = get_banner_info( product_ids )
 					
 			db.set_main_page_info( app.config['pool'], field, res )
 			res = json.dumps( res )			
@@ -188,6 +202,12 @@ def create_app( test_config=None ):
 		return res
 	
 	
+	@app.route( '/api/goods/get_stav_v/<int:pid>', methods = ['GET'] )
+	def get_star_v( pid ):
+		res = mysql_db.get_star_v( app.config['mysql_pool'], pid )
+		return res
+		
+	
 	# [ {zone_1_info}, {zone_2_info}..... ]
 	# zone_1_info - { 'name':xx, 'icon':xxxx, 'id':xxxx }
 	# 专区图像路径 默认为 app.config['HTTP_ADDR'] + upload/product/xingxuan/zone/90/banner.jpg
@@ -218,34 +238,18 @@ def create_app( test_config=None ):
 		return json.dumps( res )
 	
 	
-	# { z_id, card_id, g_sp_list:json-str, uid, addr, phone, consignee }
-	# g_sp_list - [ [产品id,产品规格名称,num], [产品id,产品规格名称,num]....], json-str
+	# { card_id, g_sp_list:json-str, uid, addr, phone, consignee }
+	# g_sp_list - [ [产品id,产品规格名称,num,z_id], [产品id,产品规格名称,num,z_id]....], json-str
+	# 非专区产品，z_id = -1	(产品id,num,z_id 都为整数类型)
 	@app.route( '/api/pay_by_card/', methods = ['POST'] )
 	def pay_by_card():
 		g_sp_list = json.loads( request.form['g_sp_list'] )
-		uid, z_id, card_id = request.form['uid'], request.form['z_id'], request.form['card_id']
-		goods_list, g_num_dict, mid_g_sp_list = [], {}, []
-		for g in g_sp_list:
-			goods_list.append( g[0] )
-			g_num_dict[ g[0] ] = g[2]
-			mid_g_sp_list.append( [g[0],g[1]] )
+		uid = request.form['uid']
 		
-		# 根据订单统计产品总金额; sum 为订单总金额
-		suc_goods = mysql_db.get_products_the_sp_info( app.config['mysql_pool'], mid_g_sp_list )
-		sum, sp_info_dict = 0, {}
-		for g in suc_goods:
-			sum += g['price'] * g_num_dict[ g['product_id'] ]
-			sp_info_dict[ g['product_id'] ] = [ g['price'], g['product_price_id'] ]
-			
+		# 判断卡是否属于uid、是否过期或被禁止
 		now, the_card = time.time(), None
-		order_info = dict( request.form )
-		order_info['amount'] = sum
-		
-		# api_type==2 进入 余额和卡共同支付接口
-		# api_type==1 进入 余额 或 卡单独支付接口
-		api_type = 1
-		if z_id!='-1':
-			# 判断卡类型、专区和产品类型是否匹配
+		if 'card_id' in request.form:
+			card_id = request.form['card_id']
 			cds_info = mysql_db.get_my_cards( app.config['mysql_pool'], uid )
 			for c in cds_info:
 				if c['card_id']==card_id and c['t1']<=now and c['t2']>=now and c['rest']>0:
@@ -255,132 +259,76 @@ def create_app( test_config=None ):
 			if the_card is None:
 				res = { 'res':'NO', 'reason':'此卡号不存在或已经作废' }
 				return json.dumps( res )
-					
-			failed = []
-			goods_ids, cards_type = mysql_db.get_zone_goods( app.config['mysql_pool'], z_id )
-			for g in goods_list:
-				if g not in goods_ids:
-					failed.append( g )
-			
-			if the_card['type'] not in cards_type:
-				res = { 'res':'NO', 'reason':'此卡不适用于该专区' }
-				return json.dumps( res )
-						
-			if failed!=[]:
-				failed_goods = mysql_db.get_products_info( app.config['mysql_pool'], failed )
-				f_names = []
-				for f in failed_goods:
-					f_names.append( f['name'] )
-				failed = ','.join( f_names )
-				res = { 'res':'NO', 'reason':failed+' 不能使用该卡券进行购买' }
-				return json.dumps( res )
-			
-			# 判断金额是否足够
-			if sum>the_card['rest']:
-				money = mysql_db.get_user_money( app.config['mysql_pool'], uid )
-				if sum>the_card['rest']+money:
-					res = { 'res':'NO', 'reason':'金额不足' }
-					return json.dumps( res )
-				else:
-					# 进入 余额和卡共同支付接口
-					api_type = 2
-
-		else:			# 使用通用卡余额支付
-			# 判断金额是否足够
-			money = mysql_db.get_user_money( app.config['mysql_pool'], uid )
-			if sum>money:
-				res = {'res':'NO', 'reason':'金额不足' }
-				return json.dumps( res )
 		
-		for g in g_sp_list:		
-			g.extend( sp_info_dict[ g[0] ] )
-		order_info['g_sp_list'] = g_sp_list
+		# 判断产品是否在指定专区中
+		pid_list, g_num_dict, mid_g_sp_list, zid_pid_dict = [], {}, [], {}
+		for g in g_sp_list:
+			pid_list.append( g[0] )
+			g_num_dict[str(g[0])] = g[2]
+			mid_g_sp_list.append( [g[0],g[1]] )
+			z_id_str = str( g[3] )
+			if z_id_str not in zid_pid_dict:
+				zid_pid_dict[ z_id_str ] = [ g[0] ]
+			else:
+				zid_pid_dict[ z_id_str ].append( g[0] )
 		
-		# 记录订单，修改金额，记录消费记录
-		mysql_db.gen_order( app.config['mysql_pool'], order_info, api_type )
+		pid_to_the_card = []			# 能用给定卡支付的产品pid [ xx,xx,xx ]
+		for k, v in zid_pid_dict.items():
+			if int(k)<0:
+				continue
+			goods_ids, cards_type = mysql_db.get_zone_goods( app.config['mysql_pool'], int(k) )
+			set_v, set_goods_ids = set( v ), set( goods_ids )
+			if not set_v.issubset( set_goods_ids ):		# 商品不是全部在给定专区中
+				res = { 'res':'NO', 'reason':'有产品与其专区不符' }
+				return json.dumps( res )
+			else:
+				if the_card is not None and the_card['type'] in cards_type:
+					pid_to_the_card.extend( v )
 			
-		return json.dumps( {'res':'OK'} )
-		
+		pid_to_the_card = list( set(pid_to_the_card) )
+		# 判断结算产品中是否至少一种能用此卡
+		if the_card is not None and len(pid_to_the_card)<=0:
+			res = { 'res':'NO', 'reason':'卡券不适用于该批产品' }
+			return json.dumps( res )
 	
-	'''
-	# { z_id, card_id, g_sp_list:json-str, uid, addr, phone, consignee }
-	# g_sp_list - [ [产品id,产品规格名称,num], [产品id,产品规格名称,num]....], json-str
-	@app.route( '/api/pay_by_card/', methods = ['POST'] )
-	def pay_by_card():
-		g_sp_list = json.loads( request.form['g_sp_list'] )
-		uid, z_id, card_id = request.form['uid'], request.form['z_id'], request.form['card_id']
-		goods_list, g_num_dict, mid_g_sp_list = [], {}, []
-		for g in g_sp_list:
-			goods_list.append( g[0] )
-			g_num_dict[ g[0] ] = g[2]
-			mid_g_sp_list.append( [g[0],g[1]] )
-		
-		# 根据订单统计产品总金额; sum 为订单总金额
+		# 计算卡券金额。卡券仅能抵扣对应产品，其它产品使用余额支付
+		# 根据订单统计产品总金额; SUM 为订单总金额
+		# card_cost 为能用卡券抵扣的产品的总价
 		suc_goods = mysql_db.get_products_the_sp_info( app.config['mysql_pool'], mid_g_sp_list )
-		sum, sp_info_dict = 0, {}
+		SUM, sp_info_dict, card_cost = 0, {}, 0
 		for g in suc_goods:
-			sum += g['price'] * g_num_dict[ g['product_id'] ]
-			sp_info_dict[ g['product_id'] ] = [ g['price'], g['product_price_id'] ]
-			
-		now, the_card = time.time(), None
-		order_info = dict( request.form )
-		order_info['amount'] = sum
-			
-		if z_id!='-1':
-			# 判断卡类型、专区和产品类型是否匹配
-			cds_info = mysql_db.get_my_cards( app.config['mysql_pool'], uid )
-			for c in cds_info:
-				if c['card_id']==card_id and c['t1']<=now and c['t2']>=now and c['rest']>0:
-					the_card = c
-					break
-			del cds_info
-			if the_card is None:
-				res = { 'res':'NO', 'reason':'此卡号不存在或已经作废' }
-				return json.dumps( res )
-					
-			failed = []
-			goods_ids, cards_type = mysql_db.get_zone_goods( app.config['mysql_pool'], z_id )
-			for g in goods_list:
-				if g not in goods_ids:
-					failed.append( g )
-			
-			if the_card['type'] not in cards_type:
-				res = { 'res':'NO', 'reason':'此卡不适用于该专区' }
-				return json.dumps( res )
-						
-			if failed!=[]:
-				failed_goods = mysql_db.get_products_info( app.config['mysql_pool'], failed )
-				f_names = []
-				for f in failed_goods:
-					f_names.append( f['name'] )
-				failed = ','.join( f_names )
-				res = { 'res':'NO', 'reason':failed+' 不能使用该卡券进行购买' }
-				return json.dumps( res )
-			
-			# 判断金额是否足够
-			if sum>the_card['rest']:
+			pid = str( g['product_id'] )
+			SUM += g['price'] * g_num_dict[ pid ]
+			sp_info_dict[ pid ] = [ g['price'], g['product_price_id'] ]
+			if int(pid) in pid_to_the_card:
+				card_cost += g['price'] * g_num_dict[ pid ]
+		
+		if the_card is not None:
+			if card_cost>=the_card['rest']:
+				card_cost = the_card['rest']
+		else:
+			card_cost = 0
+		rest_cost = SUM - card_cost	
+		if rest_cost>0:
+			# 判断余额金额是否足够
+			money = mysql_db.get_user_money( app.config['mysql_pool'], uid )
+			if rest_cost>money:
 				res = { 'res':'NO', 'reason':'金额不足' }
 				return json.dumps( res )
 				
-		else:			# 使用通用卡余额支付
-			# 判断金额是否足够
-			money = mysql_db.get_user_money( app.config['mysql_pool'], uid )
-			if sum>money:
-				res = {'res':'NO', 'reason':'金额不足' }
-				return json.dumps( res )
-		
+		# 进行交易
+		order_info = dict( request.form )	
 		for g in g_sp_list:		
-			g.extend( sp_info_dict[ g[0] ] )
+			g.extend( sp_info_dict[ str(g[0]) ] )
 		order_info['g_sp_list'] = g_sp_list
 		
 		# 记录订单，修改金额，记录消费记录
-		mysql_db.gen_order( app.config['mysql_pool'], order_info )
+		mysql_db.gen_order_2( app.config['mysql_pool'], order_info, {'card_cost':card_cost, 'rest_cost':rest_cost} )
 			
 		return json.dumps( {'res':'OK'} )
-	'''	
-	
-	
-	# card_ids_list - xxxx,xxx,xxx
+		
+
+	# zone_ids - xxxx,xxx,xxx
 	@app.route( '/api/available_cards/<string:uid>/<string:zone_ids>', methods = ['GET'] )
 	def available_cards( uid, zone_ids ):
 		zone_ids_list = zone_ids.split( ',' )
@@ -395,7 +343,7 @@ def create_app( test_config=None ):
 		{'c_id':90, 'name':'新鲜水果' },
 		{'c_id':91, 'name':'即食果蔬' },
 		{'c_id':92, 'name':'星选果蔬' },
-		{'c_id':93, 'name':'白成品食材' },
+		{'c_id':93, 'name':'半成品食材' },
 		{'c_id':94, 'name':'星选零食' },
 		{'c_id':95, 'name':'肉禽蛋类' },
 		{'c_id':96, 'name':'水产海鲜' },
@@ -505,17 +453,17 @@ def create_app( test_config=None ):
 		return json.dumps( res )
 	
 	
-	# /api/cart/inc/205/7298/7299/1
+	# /api/cart/inc/205/7298/7299/1/10
 	# 增加产品至购物车（数量增加或新品）
 	# res - {'res':'OK'}, {'res':'NO', 'reason':xx}
 	# z_id<0 表示不存在
-	@app.route( '/api/cart/inc/<string:uid>/<string:pid>/<string:product_price_id>/<string:z_id>', methods = ['GET'] )
-	def cart_inc( uid, pid, product_price_id, z_id ):
+	@app.route( '/api/cart/inc/<string:uid>/<string:pid>/<string:product_price_id>/<string:z_id>/<int:num>', methods = ['GET'] )
+	def cart_inc( uid, pid, product_price_id, z_id, num ):
 		try:
 			z_id = int( z_id )
 		except:
 			z_id = -1
-		res = mysql_db.cart_add( app.config['mysql_pool'], uid, pid, product_price_id, z_id )
+		res = mysql_db.cart_add( app.config['mysql_pool'], uid, pid, product_price_id, z_id, num )
 		return json.dumps( res )
 	
 	
@@ -555,4 +503,138 @@ def create_app( test_config=None ):
 		return json.dumps( res )
 	
 	
+	@app.route( '/api/addrs/get/<int:uid>', methods = ['GET'] )
+	def get_addr( uid ):
+		res = mysql_db.get_addrs( app.config['mysql_pool'], uid )
+		return res
+	
+	
+	@app.route( '/api/addrs/set/<int:uid>/<string:new_addr>', methods = ['GET', 'POST'] )
+	def set_addr( uid, new_addr ):
+		if new_addr=='none':
+			new_addr = request.form['data']
+		res = mysql_db.set_addr( app.config['mysql_pool'], uid, new_addr )
+		return json.dumps( res )
+		
+	
+	@app.route( '/api/addrs/set_default/<int:uid>/<int:addr_id>', methods = ['GET'] )
+	def set_default_addr( uid, addr_id ):
+		res = mysql_db.set_addr_default( app.config['mysql_pool'], uid, addr_id )
+		return json.dumps( res )
+	
+	
+	@app.route( '/api/addrs/del/<int:uid>/<int:addr_id>', methods = ['GET'] )
+	def del_addr( uid, addr_id ):
+		res = mysql_db.del_addrs( app.config['mysql_pool'], uid, addr_id )
+		return json.dumps( res )
+	
+#------------------------------------------------------------------------------------------------
+# 后台功能
+#------------------------------------------------------------------------------------------------
+	@app.route( '/api/goods/set/status/<int:pid>/<string:status_str>', methods = ['GET'] )
+	def set_goods_status( pid, status_str ):
+		if status_str=='on':
+			status = 1
+		else:
+			status = 2
+		res = mysql_db.set_goods_status( app.config['mysql_pool'], pid, status )
+
+		return json.dumps( res )
+	
+	
+	@app.route( '/edit', methods = ['GET'] )
+	def edit_goods_info():
+		return app.send_static_file( 'wdh_table.html' )
+	
+	
+	# ('pid', ''), ('store_id', ''), ('name', ''), ('category', 'A'), ('sub_category', 'SA')
+	@app.route( '/api/goods/set/g_info_1', methods = ['POST'] )
+	def set_g_info_1():
+		data, sig = dict( request.form ), False
+		for c in categories:
+			if c['name']==data['category']:
+				data['category'] = c['c_id']
+				sig = True
+				break
+		if sig==False:
+			res = {'res':'NO', 'reason':'无此类别'}
+		else:
+			res = mysql_db.set_update_goods_info_1( app.config['mysql_pool'], goods_info_1 )
+		return json.dumps( res )
+	
+	# {'sp_1': '', 'sp_2': '', 'sp_3': '', 'sp_4': '', 'sp_5': '', 'sp_6': ''}
+	@app.route( '/api/goods/set/sps/<int:pid>', methods = ['POST'] )
+	def set_sps( pid ):
+		data = dict( request.form )
+		res = mysql_db.set_goods_sps( app.config['mysql_pool'], pid, data )
+		return json.dumps( res )
+	
+	
+	# introduction - string
+	@app.route( '/api/goods/set/introduction/<int:pid>', methods = ['POST'] )
+	def set_introduction( pid ):
+		data = request.form['data']
+		res = mysql_db.set_goods_introduction( app.config['mysql_pool'], pid, data )
+		return json.dumps( res )
+	
+	
+	def allowed_file( filename ):
+		ALLOWED_EXTENSIONS = set( ['png', 'jpg', 'jpeg', 'gif'] )
+		return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+	
+	
+	# 数据库中存储地址 upload/product/xingxuan/7000/7033/lg_2.jpg
+	# 产品图片存储路径
+	database_path = 'upload/product/xingxuan'
+	icon_path = '.'
+	# type - icon, details
+	@app.route( '/api/images/upload/<string:pid>/<string:store_id>/<string:type>', methods = ['GET', 'POST'] )
+	def uploaded_file( pid, store_id, type ):
+		if request.method == 'POST':
+			if 'file' not in request.files:
+				return json.dumps( {'res':'NO', 'reason':'POST请求中无文件数据'} )
+				
+			file = request.files['file']
+			if file.filename == '':
+				return json.dumps( {'res':'NO', 'reason':'请选择上传文件'} )
+				
+			if file and allowed_file( file.filename ):
+				suffix = os.path.splitext( file.filename )[-1]			
+				if type=='icon':
+					save_path = icon_path
+					filename = 'small_%d' % time.time() + suffix
+					key_wd = 'small'
+				elif type=='details':
+					save_path = icon_path
+					filename = 'lg_%s_%d%s' %(request.form['index'], time.time(), suffix) 
+					key_wd = 'lg_' + request.form['index']
+						
+				save_path_full = os.path.join( icon_path, filename )	
+				file.save( save_path_full )
+				
+				# 数据库中删除相关图片, 文件夹内删除对应文件，文件要更换名称
+				# 仅处理 详情图
+				if type=='icon':
+					res = mysql_db.get_icon( app.config['mysql_pool'], pid )
+					pass
+				else:
+					res = mysql_db.get_pictures( app.config['mysql_pool'], pid )
+					for r in res:
+						fn = os.path.basename( r['photo_url'] )
+						if key_wd in fn:
+							ids = [ r['product_price_id'] ]
+							mysql_db.del_pictures( app.config['mysql_pool'], ids )
+							try:
+								os.remove( os.path.join(save_path, fn) )
+							except:
+								pass
+							file_path = os.path.join( database_path, store_id, pid, filename )
+							mysql_db.set_pictures( app.config['mysql_pool'], pid, file_path )
+				
+			else:
+				return json.dumps( {'res':'NO', 'reason':'不支持的文件格式'} )
+			
+		return json.dumps( {'res':'OK'} )
+		
+		
 	return app
